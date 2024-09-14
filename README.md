@@ -4,15 +4,20 @@
 
 
 ### Demo
-[https://img.131213.xyz](https://img.131213.xyz/)
+
+[https://aimg.pages.dev/](https://aimg.pages.dev/)
 
 ### 测试
-[https://testimg.131213.xyz/](https://testimg.131213.xyz/)
-> 测试账号：admin
+[https://telegraph-image-e49.pages.dev/](https://telegraph-image-e49.pages.dev/)
 
-> 测试密码：admin
+```
+测试管理员账号：admin
+测试管理员密码：admin
 
+测试普通用户：user
+测试普通用户：user
 
+```
 
 ### 开发计划
 - [x] 后台管理
@@ -65,16 +70,19 @@
 
 > 环境变量
 
-| 变量名称      | 值 |
-| ----------- | ----------- |
-|PROXYALLIMG  | 反向代理所有图片（默认为false）|
-|BASIC_USER   | <后台管理页面登录用户名称>|
-|BASIC_PASS   | <后台管理页面登录用户密码>|
-|ModerateContentApiKey   | <审查图像内容的API key>|
-|RATINGAPI     | <[自建的鉴黄api](https://github.com/x-dr/nsfwjs-api) >|
-|CUSTOM_DOMAIN | https://your-custom-domain.com (自定义加速域名) |
-|TG_BOT_TOKEN  | 123468:AAxxxGKrn5 (从 [@BotFather](https://t.me/BotFather)) |
-|TG_CHAT_ID   | -1234567 (频道的ID,TG Bot要是该频道或群组的管理员) |
+| 变量名称      | 值 | type |
+| ----------- | ----------- | ----------- |
+|PROXYALLIMG  | 反向代理所有图片（默认为false）| boolean |
+|BASIC_USER   | 后台管理页面登录用户名称| string |
+|BASIC_PASS   | 后台管理页面登录用户密码| string |
+|ENABLE_AUTH_API   | 是否开启tg channel访客验证 （默认为false）| boolean |
+|REGULAR_USER | 普通用户 （tg channel访客验证）| string |
+|REGULAR_PASS   | 普通用户密码| string |
+|ModerateContentApiKey   | 审查图像内容的API key| string |
+|RATINGAPI     | [自建的鉴黄api](https://github.com/x-dr/nsfwjs-api) | string |
+|CUSTOM_DOMAIN | https://your-custom-domain.com (自定义加速域名) | string |
+|TG_BOT_TOKEN  | 123468:AAxxxGKrn5 (从 [@BotFather](https://t.me/BotFather)) |string |
+|TG_CHAT_ID   | -1234567 (频道的ID,TG Bot要是该频道或群组的管理员) |string |
 
 > TG_BOT_TOKEN
 
