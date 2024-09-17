@@ -1,5 +1,6 @@
 export const runtime = 'edge';
 import { getRequestContext } from '@cloudflare/next-on-pages';
+import { headers } from 'next/headers';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,16 +15,16 @@ export async function OPTIONS(request) {
   });
 }
 
+
+//https://developers.cloudflare.com/r2/examples/demo-worker/
 export async function GET(request, { params }) {
   const { name } = params
   let { env, cf, ctx } = getRequestContext();
 
-  let req_url = new URL(request.url);
-
-	if (!env.TG_BOT_TOKEN || !env.TG_CHAT_ID) {
+	if(!env.IMGRS){
 		return Response.json({
 			status: 500,
-			message: `TG_BOT_TOKEN or TG_CHAT_ID is not Set`,
+			message: `IMGRS is not Set`,
 			success: false
 		}, {
 			status: 500,
@@ -31,18 +32,19 @@ export async function GET(request, { params }) {
 		})
 	}
 
-
   const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || request.socket.remoteAddress;
   const clientIp = ip ? ip.split(',')[0].trim() : 'IP not found';
   const Referer = request.headers.get('Referer') || "Referer";
 
+  const req_url = new URL(request.url);
+  // 构造缓存键
   const cacheKey = new Request(req_url.toString(), request);
   const cache = caches.default;
 
   let rating
 
   try {
-    rating = await getRating(env.IMG, `/cfile/${name}`);
+    rating = await getRating(env.IMG, `/rfile/${name}`);
     if (rating === 3 && !(Referer === `${req_url.origin}/admin` || Referer === `${req_url.origin}/list` || Referer === `${req_url.origin}/`)) {
       await logRequest(env, name, Referer, clientIp);
       return Response.redirect(`${req_url.origin}/img/blocked.png`, 302);
@@ -61,59 +63,54 @@ export async function GET(request, { params }) {
   }
 
 
-  try {
-    const file_path = await getFile_path(env, name);
-    const fileName = file_path.split('/').pop();
 
-    if (file_path === "error") {
+  try {
+
+    const object = await env.IMGRS.get(name, {
+      range: request.headers,
+      onlyIf: request.headers,
+    })
+
+    if (object === null) {
       return Response.json({
-        status: 500,
+        status: 404,
         message: ` ${error.message}`,
         success: false
       }
         , {
-          status: 500,
+          status: 404,
           headers: corsHeaders,
         })
 
-    } else {
-      const res = await fetch(`https://api.telegram.org/file/bot${env.TG_BOT_TOKEN}/${file_path}`, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-      });
-
-      if (res.ok) {
-        const fileBuffer = await res.arrayBuffer();
-        if (Referer == req_url.origin + "/admin" || Referer == req_url.origin + "/list" || Referer == req_url.origin + "/" || !env.IMG) {
-          return new Response(fileBuffer, {
-            headers: {
-              "Content-Disposition": `attachment; filename=${fileName}`,
-              "Access-Control-Allow-Origin": "*"
-            },
-          });
-        } else {
-          await logRequest(env, name, Referer, clientIp);
-          return new Response(fileBuffer, {
-            headers: {
-              "Content-Disposition": `attachment; filename=${fileName}`,
-              "Access-Control-Allow-Origin": "*"
-            },
-          });
-
-        }
-      } else {
-        return Response.json({
-          status: 500,
-          message: ` ${error.message}`,
-          success: false
-        }
-          , {
-            status: 500,
-            headers: corsHeaders,
-          })
-      }
     }
+    const headers = new Headers()
+    object.writeHttpMetadata(headers)
+    headers.set('etag', object.httpEtag)
+
+    if (object.range) {
+      headers.set("content-range", `bytes ${object.range.offset}-${object.range.end ?? object.size - 1}/${object.size}`)
+    }
+
+    const status = object.body ? (request.headers.get("range") !== null ? 206 : 200) : 304
+
+    let response_img = new Response(object.body, {
+      headers,
+      status
+    })
+    if (status === 200) {
+      await cache.put(cacheKey, response_img.clone());
+    }
+
+
+
+
+    if (Referer == req_url.origin + "/admin" || Referer == req_url.origin + "/list" || Referer == req_url.origin + "/" || !env.IMG) {
+      return response_img
+    } else {
+      await logRequest(env, name, Referer, clientIp);
+      return response_img
+    }
+
   } catch (error) {
     return Response.json({
       status: 500,
@@ -126,37 +123,8 @@ export async function GET(request, { params }) {
       })
   }
 
-
 }
 
-
-
-
-async function getFile_path(env, file_id) {
-  try {
-    const url = `https://api.telegram.org/bot${env.TG_BOT_TOKEN}/getFile?file_id=${file_id}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        "User-Agent": " Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome"
-      },
-    })
-
-    let responseData = await res.json();
-
-    if (responseData.ok) {
-      const file_path = responseData.result.file_path
-      return file_path
-    } else {
-      return "error";
-    }
-  } catch (error) {
-    return "error";
-
-  }
-
-
-}
 
 
 
@@ -167,6 +135,17 @@ async function insertTgImgLog(DB, url, referer, ip, time) {
     .run();
 }
 
+// 异步日志记录
+async function logRequest(env, name, referer, ip) {
+  try {
+    const nowTime = await get_nowTime()
+    await insertTgImgLog(env.IMG, `/rfile/${name}`, referer, ip, nowTime);
+    const setData = await env.IMG.prepare(`UPDATE imginfo SET total = total +1 WHERE url = '/rfile/${name}';`).run()
+  } catch (error) {
+    console.error('Error logging request:', error);
+  }
+}
+
 
 
 // 从数据库获取鉴黄信息
@@ -175,7 +154,6 @@ async function getRating(DB, url) {
   const result = await ps.first();
   return result ? result.rating : null;
 }
-
 
 
 
@@ -196,16 +174,4 @@ async function get_nowTime() {
 
   return formattedDate
 
-}
-
-
-// 异步日志记录
-async function logRequest(env, name, referer, ip) {
-  try {
-    const nowTime = await get_nowTime()
-    await insertTgImgLog(env.IMG, `/cfile/${name}`, referer, ip, nowTime);
-    const setData = await env.IMG.prepare(`UPDATE imginfo SET total = total +1 WHERE url = '/rfile/${name}';`).run()
-  } catch (error) {
-    console.error('Error logging request:', error);
-  }
 }
